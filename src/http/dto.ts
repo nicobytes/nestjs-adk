@@ -1,8 +1,21 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  ValidateIf,
+} from 'class-validator';
 
+/** Decision path uses waId; legacy demo/tests may still send sessionId. */
 export class InboundDto {
+  @ValidateIf((body: InboundDto) => !body.sessionId)
+  @IsString()
+  @IsNotEmpty()
+  waId?: string;
+
+  @ValidateIf((body: InboundDto) => !body.waId)
   @IsUUID()
-  sessionId: string;
+  sessionId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -15,8 +28,13 @@ export class InboundDto {
 }
 
 export class InteractiveDto {
+  @ValidateIf((body: InteractiveDto) => !body.sessionId)
   @IsUUID()
-  sessionId: string;
+  conversationId?: string;
+
+  @ValidateIf((body: InteractiveDto) => !body.conversationId)
+  @IsUUID()
+  sessionId?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -29,8 +47,13 @@ export class InteractiveDto {
 }
 
 export class OperatorReplyDto {
+  @ValidateIf((body: OperatorReplyDto) => !body.sessionId)
   @IsUUID()
-  sessionId: string;
+  conversationId?: string;
+
+  @ValidateIf((body: OperatorReplyDto) => !body.conversationId)
+  @IsUUID()
+  sessionId?: string;
 
   @IsString()
   @IsNotEmpty()

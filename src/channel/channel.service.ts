@@ -1,6 +1,8 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { PocLog } from '../adk/poc-log.js';
-import { CHANNEL_SINKS } from '../constants.js';
+import { CHANNEL_SINKS, INBOX_WRITER } from '../constants.js';
+import { ConversationStore } from '../conversations/conversation.store.js';
+import { InboxWriterService } from '../conversations/inbox-view.js';
 import {
   BoundChannel,
   ChannelMessage,
@@ -19,6 +21,10 @@ export class ChannelService {
   constructor(
     private readonly log: PocLog,
     @Inject(CHANNEL_SINKS) private readonly sinks: ChannelSink[],
+    @Optional() private readonly store?: ConversationStore,
+    @Optional()
+    @Inject(INBOX_WRITER)
+    private readonly inbox?: InboxWriterService,
   ) {}
 
   bind(sessionId: string, channel: ChannelName, target?: string): void {
@@ -31,6 +37,19 @@ export class ChannelService {
     options: ChoiceOption[],
     meta: { functionCallId?: string; invocationId?: string } = {},
   ): Promise<ChannelMessage> {
+    if (meta.functionCallId && this.store) {
+      const first = this.store.tryMarkToolSent(
+        meta.functionCallId,
+        sessionId,
+        'ask_choice',
+      );
+      if (!first) {
+        const existing = this.list(sessionId)
+          .filter((message) => message.kind === 'buttons')
+          .at(-1);
+        if (existing) return Promise.resolve(existing);
+      }
+    }
     return this.push(sessionId, 'buttons', { prompt, options, ...meta });
   }
 
@@ -53,6 +72,18 @@ export class ChannelService {
     return this.messages.filter((message) => message.sessionId === sessionId);
   }
 
+  clear(sessionId?: string): void {
+    if (!sessionId) {
+      this.messages.length = 0;
+      return;
+    }
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      if (this.messages[i].sessionId === sessionId) {
+        this.messages.splice(i, 1);
+      }
+    }
+  }
+
   private async push(
     sessionId: string,
     kind: ChannelMessage['kind'],
@@ -70,6 +101,7 @@ export class ChannelService {
     };
     this.messages.push(message);
     this.log.event('channel_send', { sessionId, channel, kind, payload });
+    this.inbox?.recordChannelMessage(sessionId, message);
     await this.deliver(message);
     return message;
   }

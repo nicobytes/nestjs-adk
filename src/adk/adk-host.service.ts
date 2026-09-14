@@ -238,7 +238,14 @@ export class AdkHostService implements OnModuleInit {
       customMetadata,
     })) {
       yielded.push(event);
-      await this.observe(sessionId, event);
+      await this.observe(sessionId, event, { deferText: true });
+    }
+    // Long-running pause: do not send leftover model prose (spec H).
+    if (!isPaused(yielded)) {
+      const text = replyText(yielded);
+      if (text) {
+        await this.channel.sendText(sessionId, text);
+      }
     }
     return yielded;
   }
@@ -258,7 +265,11 @@ export class AdkHostService implements OnModuleInit {
     }
   }
 
-  private async observe(sessionId: string, event: Event): Promise<void> {
+  private async observe(
+    sessionId: string,
+    event: Event,
+    options: { deferText?: boolean } = {},
+  ): Promise<void> {
     for (const part of event.content?.parts ?? []) {
       if (part.functionCall) {
         this.log.event('tool_call', {
@@ -284,7 +295,9 @@ export class AdkHostService implements OnModuleInit {
         author: event.author,
         text,
       });
-      await this.channel.sendText(sessionId, text);
+      if (!options.deferText) {
+        await this.channel.sendText(sessionId, text);
+      }
     }
   }
 
@@ -298,10 +311,8 @@ export class AdkHostService implements OnModuleInit {
       userId,
       sessionId,
     });
-    return (
-      (session && findPendingChoice(session.events)) ||
-      this.pendingFromChannel(sessionId)
-    );
+    // Decision path: pending choice must come from durable session events.
+    return session ? findPendingChoice(session.events) : undefined;
   }
 
   private pendingFromChannel(sessionId: string) {
