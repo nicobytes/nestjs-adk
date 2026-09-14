@@ -19,6 +19,24 @@ export interface LocationPayload {
   address?: string;
 }
 
+export interface ListRow {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+export interface ListSection {
+  title: string;
+  rows: ListRow[];
+}
+
+export interface ListPayload {
+  prompt: string;
+  buttonLabel?: string;
+  sections?: ListSection[];
+  options?: ChoiceOption[];
+}
+
 export function isHttpsUrl(value: string): boolean {
   try {
     return new URL(value).protocol === 'https:';
@@ -35,7 +53,7 @@ export interface BoundChannel {
 export interface ChannelMessage {
   sessionId: string;
   channel: ChannelName;
-  kind: 'buttons' | 'text' | 'media' | 'location';
+  kind: 'buttons' | 'text' | 'media' | 'location' | 'list';
   payload: Record<string, unknown>;
   at: string;
   target?: string;

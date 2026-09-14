@@ -1,7 +1,5 @@
 import { Context, LlmRequest } from '@google/adk';
-import { REPLY_WITH_BUTTONS, REPLY_WITH_TEXT } from './reply.tool.js';
-
-const OUTBOUND_TOOLS = new Set([REPLY_WITH_TEXT, REPLY_WITH_BUTTONS]);
+import { OUTBOUND_SEND_TOOLS } from '../channel-tools.js';
 
 const BANT_MARKERS = [
   'interest_level',
@@ -46,7 +44,7 @@ export function stripInternalBantContents(params: {
 }
 
 /**
- * After an outbound reply tool, stop the turn (no second model round).
+ * After an outbound send_* tool, stop the turn (no second model round).
  * Uses skipSummarization so isFinalResponse ends the LlmAgent loop.
  */
 export function stopTurnAfterOutboundIntent(params: {
@@ -55,7 +53,7 @@ export function stopTurnAfterOutboundIntent(params: {
   context: Context;
   response: Record<string, unknown>;
 }): Record<string, unknown> | undefined {
-  if (!OUTBOUND_TOOLS.has(params.tool.name)) return undefined;
+  if (!OUTBOUND_SEND_TOOLS.has(params.tool.name)) return undefined;
   params.context.actions.skipSummarization = true;
   params.context.actions.endOfAgent = true;
   return undefined;

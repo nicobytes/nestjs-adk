@@ -4,7 +4,12 @@ import {
   Event,
   InvocationContext,
 } from '@google/adk';
-import { BantSignals, decideHandoff, defaultBantSignals } from './gate.js';
+import {
+  BantSignals,
+  decideHandoff,
+  defaultBantSignals,
+  HandoffDecision,
+} from './gate.js';
 import {
   HANDOFF_WAITING_HUMAN,
   isActivatePending,
@@ -21,6 +26,11 @@ import {
 export const AMARU_LITE_ID = 'amaru_lite';
 export const ORCHESTRATOR_NAME = 'amaru_lite';
 
+export type HandoffGate = (
+  signals: BantSignals,
+  userTurnCount: number,
+) => HandoffDecision;
+
 function mergeStateDelta(
   context: InvocationContext,
   event: Event,
@@ -36,9 +46,12 @@ function parseBantFromEvents(events: Event[]): BantSignals | undefined {
     for (const part of parts) {
       if (typeof part.text !== 'string') continue;
       const trimmed = part.text.trim();
-      if (!trimmed.startsWith('{')) continue;
+      const jsonish = trimmed.startsWith('{')
+        ? trimmed
+        : trimmed.match(/\{[\s\S]*\}/)?.[0];
+      if (!jsonish) continue;
       try {
-        const parsed = JSON.parse(trimmed) as BantSignals;
+        const parsed = JSON.parse(jsonish) as BantSignals;
         if (parsed && typeof parsed === 'object' && 'interest_level' in parsed) {
           return parsed;
         }
@@ -50,23 +63,46 @@ function parseBantFromEvents(events: Event[]): BantSignals | undefined {
   return undefined;
 }
 
+function coerceBant(raw: unknown): BantSignals | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw) as BantSignals;
+      if (parsed && typeof parsed === 'object' && 'interest_level' in parsed) {
+        return parsed;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+  if (typeof raw === 'object' && 'interest_level' in (raw as object)) {
+    return raw as BantSignals;
+  }
+  return undefined;
+}
+
 /**
  * Amaru-lite orchestrator: activate shortcut, qualifier (swallowed), gate, bridge|customer.
  * Sub-agents are injectable so tests can use fakes without Gemini.
  */
 export class AmaruLiteOrchestrator extends BaseAgent {
+  private readonly gate: HandoffGate;
+
   constructor(
     private readonly qualifier: BaseAgent,
     private readonly bridge: BaseAgent,
     private readonly activate: BaseAgent,
     private readonly customer: BaseAgent,
+    options: { name?: string; gate?: HandoffGate } = {},
   ) {
     super({
-      name: ORCHESTRATOR_NAME,
+      name: options.name ?? ORCHESTRATOR_NAME,
       description:
         'Qualifier is swallowed; gate decides bridge handoff vs customer.',
       subAgents: [qualifier, bridge, activate, customer],
     });
+    this.gate = options.gate ?? decideHandoff;
   }
 
   protected async *runAsyncImpl(
@@ -95,12 +131,12 @@ export class AmaruLiteOrchestrator extends BaseAgent {
     }
 
     const signals =
-      readBantResult(context.session.state) ??
+      coerceBant(readBantResult(context.session.state)) ??
       parseBantFromEvents(qualifierEvents) ??
       defaultBantSignals();
 
     context.session.state[STATE_BANT_RESULT] = signals;
-    const decision = decideHandoff(signals, nextTurn);
+    const decision = this.gate(signals, nextTurn);
     context.session.state[STATE_LEAD_QUALIFIES] = decision.qualifies;
 
     if (decision.qualifies) {

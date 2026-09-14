@@ -20,10 +20,10 @@ import {
 } from '../src/agents/amaru-lite/gate.js';
 import { AMARU_LITE_ID } from '../src/agents/amaru-lite/orchestrator.js';
 import {
-  createReplyWithButtonsTool,
-  createReplyWithTextTool,
-  REPLY_WITH_TEXT,
-} from '../src/agents/amaru-lite/reply.tool.js';
+  createSendButtonsTool,
+  createSendTextTool,
+  SEND_TEXT,
+} from '../src/agents/channel-tools.js';
 import {
   HANDOFF_WAITING_HUMAN,
   STATE_ACTIVATE_PENDING,
@@ -277,7 +277,7 @@ describe('amaru-lite outbound gist', () => {
             {
               functionCall: {
                 id: 'call-out-1',
-                name: REPLY_WITH_TEXT,
+                name: SEND_TEXT,
                 args: { body: 'mensaje canal' },
               },
             },
@@ -289,10 +289,10 @@ describe('amaru-lite outbound gist', () => {
     const agent = new LlmAgent({
       name: 'customer_gist',
       model: fakeModel,
-      instruction: 'Use reply_with_text once.',
+      instruction: 'Use send_text once.',
       tools: [
-        createReplyWithTextTool(channel, new PocLog()),
-        createReplyWithButtonsTool(channel, new PocLog()),
+        createSendTextTool(channel, new PocLog()),
+        createSendButtonsTool(channel, new PocLog()),
       ],
     });
 

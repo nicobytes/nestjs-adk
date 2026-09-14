@@ -2,6 +2,10 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { createEvent } from '@google/adk';
 import { AdkHostService, RunView } from '../adk/adk-host.service.js';
 import { findPendingChoice } from '../adk/events.js';
+import {
+  HANDOFF_WAITING_HUMAN,
+  STATE_HANDOFF_PHASE,
+} from '../agents/amaru-lite/state.js';
 import { ChannelService } from '../channel/channel.service.js';
 import { DEFAULT_AGENT_ID, USER_ID } from '../constants.js';
 import { ConversationStore } from '../conversations/conversation.store.js';
@@ -38,6 +42,7 @@ export class TurnService {
       channel: 'fake',
       target: conversation.wa_id,
     });
+    await this.syncHandoffFromSession(conversation.id, agentId);
     return view;
   }
 
@@ -70,12 +75,14 @@ export class TurnService {
     if (!pending) {
       return { skipped: true, reason: 'no_pending_choice', stored: true };
     }
-    return this.host.resume(conversation.id, input.buttonId, {
+    const view = await this.host.resume(conversation.id, input.buttonId, {
       agentId,
       userId: USER_ID,
       channel: 'fake',
       target: conversation.wa_id,
     });
+    await this.syncHandoffFromSession(conversation.id, agentId);
+    return view;
   }
 
   async appendOperatorReply(conversationId: string, text: string): Promise<void> {
@@ -115,20 +122,48 @@ export class TurnService {
     const messages = this.store.listMessages(conversationId);
     for (let i = messages.length - 1; i >= 0; i--) {
       const row = messages[i];
-      if (row.kind !== 'buttons') continue;
+      if (row.kind !== 'buttons' && row.kind !== 'list') continue;
       const payload = JSON.parse(row.payload_json) as {
         options?: Array<{ id: string; title: string }>;
+        sections?: Array<{ rows: Array<{ id: string; title: string }> }>;
       };
-      const match = payload.options?.find((option) => option.id === buttonId);
-      if (match) return match.title;
+      const fromOptions = payload.options?.find((option) => option.id === buttonId);
+      if (fromOptions) return fromOptions.title;
+      for (const section of payload.sections ?? []) {
+        const match = section.rows?.find((row) => row.id === buttonId);
+        if (match) return match.title;
+      }
     }
     const channelButtons = this.channel
       .list(conversationId)
-      .filter((message) => message.kind === 'buttons')
+      .filter((message) => message.kind === 'buttons' || message.kind === 'list')
       .at(-1);
     const options = channelButtons?.payload.options as
       | Array<{ id: string; title: string }>
       | undefined;
-    return options?.find((option) => option.id === buttonId)?.title;
+    const fromChannel = options?.find((option) => option.id === buttonId)?.title;
+    if (fromChannel) return fromChannel;
+    const sections = channelButtons?.payload.sections as
+      | Array<{ rows: Array<{ id: string; title: string }> }>
+      | undefined;
+    for (const section of sections ?? []) {
+      const match = section.rows?.find((row) => row.id === buttonId);
+      if (match) return match.title;
+    }
+    return undefined;
+  }
+
+  private async syncHandoffFromSession(
+    conversationId: string,
+    agentId: string,
+  ): Promise<void> {
+    const session = await this.host.sessionService.getSession({
+      appName: agentId,
+      userId: USER_ID,
+      sessionId: conversationId,
+    });
+    if (session?.state?.[STATE_HANDOFF_PHASE] === HANDOFF_WAITING_HUMAN) {
+      this.store.setStatus(conversationId, 'WAITING_HUMAN');
+    }
   }
 }

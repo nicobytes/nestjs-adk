@@ -62,6 +62,25 @@ function mapChannelToInbox(message: ChannelMessage): {
         source: 'ask_choice',
       };
     }
+    case 'list': {
+      const prompt = String(payload.prompt ?? '');
+      const buttonLabel = String(payload.buttonLabel ?? 'Elegir');
+      const sections =
+        (payload.sections as Array<{
+          title: string;
+          rows: Array<{ id: string; title: string }>;
+        }>) ?? [];
+      return {
+        kind: 'list',
+        body: prompt,
+        payload: {
+          prompt,
+          buttonLabel,
+          sections,
+        },
+        source: 'send_list',
+      };
+    }
     case 'location': {
       const name = String(payload.name ?? '');
       const latitude = payload.latitude;

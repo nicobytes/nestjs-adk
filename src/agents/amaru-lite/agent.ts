@@ -3,7 +3,11 @@ import { AgentDeps, AgentRoot } from '../types.js';
 import { createActivateAgent } from './activate.js';
 import { createBridgeAgent } from './bridge.js';
 import { createCustomerAgent } from './customer.js';
-import { AmaruLiteOrchestrator, AMARU_LITE_ID } from './orchestrator.js';
+import {
+  AmaruLiteOrchestrator,
+  AMARU_LITE_ID,
+  HandoffGate,
+} from './orchestrator.js';
 import { createQualifierAgent } from './qualifier.js';
 
 export { AMARU_LITE_ID };
@@ -23,11 +27,14 @@ export function createAmaruLiteWithAgents(options: {
   bridge: BaseAgent | LlmAgent;
   activate: BaseAgent | LlmAgent;
   customer: BaseAgent | LlmAgent;
+  name?: string;
+  gate?: HandoffGate;
 }): AmaruLiteOrchestrator {
   return new AmaruLiteOrchestrator(
     options.qualifier,
     options.bridge,
     options.activate,
     options.customer,
+    { name: options.name, gate: options.gate },
   );
 }

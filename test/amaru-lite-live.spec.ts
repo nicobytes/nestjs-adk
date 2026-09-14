@@ -13,7 +13,6 @@ import { createAmaruLiteAgent } from '../src/agents/amaru-lite/agent.js';
 import { AMARU_LITE_ID } from '../src/agents/amaru-lite/orchestrator.js';
 import {
   HANDOFF_WAITING_HUMAN,
-  STATE_BANT_RESULT,
   STATE_HANDOFF_PHASE,
   STATE_USER_TURN_COUNT,
 } from '../src/agents/amaru-lite/state.js';
@@ -34,64 +33,75 @@ function bindGemini(node: BaseNode, apiKey: string, seen = new Set<BaseNode>()) 
   }
 }
 
-describe.skipIf(!hasGeminiKey)('amaru-lite live qualifier', () => {
-  it('runs live qualifier and records classification quality', async () => {
-    const apiKey =
-      process.env.GOOGLE_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      process.env.GOOGLE_GENAI_API_KEY ||
-      '';
-    const channel = new ChannelService(new PocLog(), []);
-    const root = await createAmaruLiteAgent({
-      channel,
-      log: new PocLog(),
-    });
-    bindGemini(root, apiKey);
+function sessionState(
+  session: { state?: unknown } | null | undefined,
+): Record<string, unknown> | undefined {
+  const state = session?.state;
+  if (
+    state &&
+    typeof (state as { toRecord?: () => Record<string, unknown> }).toRecord ===
+      'function'
+  ) {
+    return (state as { toRecord: () => Record<string, unknown> }).toRecord();
+  }
+  return state as Record<string, unknown> | undefined;
+}
 
-    const sessionService = new InMemorySessionService();
-    const sessionId = randomUUID();
-    await sessionService.createSession({
-      appName: AMARU_LITE_ID,
-      userId: USER_ID,
-      sessionId,
-      state: { [STATE_USER_TURN_COUNT]: 0 },
-    });
-    const runner = new Runner({
-      appName: AMARU_LITE_ID,
-      agent: root,
-      sessionService,
-    });
+async function runLive(text: string) {
+  const apiKey =
+    process.env.GOOGLE_API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENAI_API_KEY ||
+    '';
+  const channel = new ChannelService(new PocLog(), []);
+  const root = await createAmaruLiteAgent({
+    channel,
+    log: new PocLog(),
+  });
+  bindGemini(root, apiKey);
 
-    for await (const _ of runner.runAsync({
-      userId: USER_ID,
-      sessionId,
-      newMessage: {
-        role: 'user',
-        parts: [{ text: 'quiero hablar con un asesor humano por favor' }],
-      },
-    })) {
-      // drain
-    }
+  const sessionService = new InMemorySessionService();
+  const sessionId = randomUUID();
+  await sessionService.createSession({
+    appName: AMARU_LITE_ID,
+    userId: USER_ID,
+    sessionId,
+    state: { [STATE_USER_TURN_COUNT]: 0 },
+  });
+  const runner = new Runner({
+    appName: AMARU_LITE_ID,
+    agent: root,
+    sessionService,
+  });
 
-    const session = await sessionService.getSession({
-      appName: AMARU_LITE_ID,
-      userId: USER_ID,
-      sessionId,
-    });
+  for await (const _ of runner.runAsync({
+    userId: USER_ID,
+    sessionId,
+    newMessage: { role: 'user', parts: [{ text }] },
+  })) {
+    // drain
+  }
 
-    // Routing must leave BANT state; hard handoff depends on classifier quality.
-    expect(session?.state[STATE_BANT_RESULT]).toBeTruthy();
-    expect(session?.state[STATE_USER_TURN_COUNT]).toBe(1);
+  const session = await sessionService.getSession({
+    appName: AMARU_LITE_ID,
+    userId: USER_ID,
+    sessionId,
+  });
+  return sessionState(session);
+}
 
-    const handedOff =
-      session?.state[STATE_HANDOFF_PHASE] === HANDOFF_WAITING_HUMAN;
-    // Soft signal for RESULTS: if false, classifier needs prompt tuning (routing still OK).
-    if (!handedOff) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[amaru-lite live] qualifier did not set WAITING_HUMAN — classifier no-go / tune prompt',
-      );
-    }
-    expect(typeof handedOff).toBe('boolean');
+describe.skipIf(!hasGeminiKey)('amaru-lite live qualifier (A2)', () => {
+  it('live human request sets WAITING_HUMAN', async () => {
+    const state = await runLive(
+      'quiero hablar con un asesor humano por favor',
+    );
+    expect(state?.[STATE_HANDOFF_PHASE]).toBe(HANDOFF_WAITING_HUMAN);
+  }, 180_000);
+
+  it('live disability sets WAITING_HUMAN', async () => {
+    const state = await runLive(
+      'viajo en silla de ruedas, ¿el plan es accesible para discapacidad?',
+    );
+    expect(state?.[STATE_HANDOFF_PHASE]).toBe(HANDOFF_WAITING_HUMAN);
   }, 180_000);
 });

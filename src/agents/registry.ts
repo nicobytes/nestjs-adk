@@ -9,11 +9,16 @@ import {
   createSequentialFlowAgent,
   SEQUENTIAL_FLOW_ID,
 } from './sequential-flow/agent.js';
+import {
+  createSofiaLiteAgent,
+  SOFIA_LITE_ID,
+} from './sofia-lite/agent.js';
 import { AgentFactory } from './types.js';
 
 export const agentRegistry: Record<string, AgentFactory> = {
   [DEFAULT_AGENT_ID]: createAmaruAgent,
   [AMARU_LITE_ID]: createAmaruLiteAgent,
+  [SOFIA_LITE_ID]: createSofiaLiteAgent,
   [SEQUENTIAL_FLOW_ID]: createSequentialFlowAgent,
   [ROUTING_ID]: createRoutingAgent,
 };

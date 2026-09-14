@@ -9,6 +9,7 @@ import {
   ChannelName,
   ChannelSink,
   ChoiceOption,
+  ListPayload,
   LocationPayload,
   MediaPayload,
 } from './channel.types.js';
@@ -66,6 +67,31 @@ export class ChannelService {
     location: LocationPayload,
   ): Promise<ChannelMessage> {
     return this.push(sessionId, 'location', { ...location });
+  }
+
+  sendList(
+    sessionId: string,
+    prompt: string,
+    options: {
+      buttonLabel?: string;
+      sections?: ListPayload['sections'];
+      options?: ChoiceOption[];
+    } = {},
+  ): Promise<ChannelMessage> {
+    const sections =
+      options.sections ??
+      (options.options?.length
+        ? [{ title: 'Opciones', rows: options.options }]
+        : undefined);
+    if (!sections?.length) {
+      throw new Error('sendList requires sections or options');
+    }
+    return this.push(sessionId, 'list', {
+      prompt,
+      buttonLabel: options.buttonLabel ?? 'Elegir',
+      sections,
+      ...(options.options ? { options: options.options } : {}),
+    });
   }
 
   list(sessionId: string): ChannelMessage[] {

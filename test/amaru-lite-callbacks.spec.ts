@@ -18,9 +18,9 @@ import {
   stripInternalBantContents,
 } from '../src/agents/amaru-lite/callbacks.js';
 import {
-  createReplyWithTextTool,
-  REPLY_WITH_TEXT,
-} from '../src/agents/amaru-lite/reply.tool.js';
+  createSendTextTool,
+  SEND_TEXT,
+} from '../src/agents/channel-tools.js';
 import { ChannelService } from '../src/channel/channel.service.js';
 import { USER_ID } from '../src/constants.js';
 import { ScriptedLlm } from './scripted-llm.js';
@@ -104,7 +104,7 @@ describe('amaru-lite callbacks', () => {
             {
               functionCall: {
                 id: 'call-1',
-                name: REPLY_WITH_TEXT,
+                name: SEND_TEXT,
                 args: { body: 'hola desde tool' },
               },
             },
@@ -118,7 +118,7 @@ describe('amaru-lite callbacks', () => {
             {
               functionCall: {
                 id: 'call-2',
-                name: REPLY_WITH_TEXT,
+                name: SEND_TEXT,
                 args: { body: 'second call must not happen' },
               },
             },
@@ -130,8 +130,8 @@ describe('amaru-lite callbacks', () => {
     const agent = new LlmAgent({
       name: 'customer_stop_probe',
       model: fakeModel,
-      instruction: 'Call reply_with_text once then stop.',
-      tools: [createReplyWithTextTool(channel, new PocLog())],
+      instruction: 'Call send_text once then stop.',
+      tools: [createSendTextTool(channel, new PocLog())],
       afterToolCallback: stopTurnAfterOutboundIntent,
     });
 
@@ -162,7 +162,7 @@ describe('amaru-lite callbacks', () => {
         .map((part) => part.functionCall?.name)
         .filter(Boolean),
     );
-    expect(functionCalls).toEqual([REPLY_WITH_TEXT]);
+    expect(functionCalls).toEqual([SEND_TEXT]);
     expect(fakeModel.calls).toBe(1);
     expect(channel.list(sessionId).some((m) => m.kind === 'text')).toBe(true);
   });

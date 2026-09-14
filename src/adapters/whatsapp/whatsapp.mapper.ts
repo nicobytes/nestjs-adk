@@ -116,6 +116,10 @@ export function toWhatsAppOutbound(
     return { kind: 'text', to, body: toWhatsAppMarkup(text) };
   }
 
+  if (message.kind === 'list') {
+    return listOutbound(to, message.payload);
+  }
+
   const prompt =
     typeof message.payload.prompt === 'string' ? message.payload.prompt : '';
   const options = choiceOptions(message.payload.options);
@@ -148,6 +152,62 @@ export function toWhatsAppOutbound(
         })),
       },
     ],
+  };
+}
+
+function listOutbound(
+  to: string,
+  payload: Record<string, unknown>,
+): WhatsAppOutbound | undefined {
+  const prompt =
+    typeof payload.prompt === 'string' ? payload.prompt : '';
+  if (!prompt.trim()) return undefined;
+  const buttonText =
+    typeof payload.buttonLabel === 'string' && payload.buttonLabel.trim()
+      ? fit(payload.buttonLabel, MAX_BUTTON_TITLE)
+      : 'Elegir';
+  const rawSections = Array.isArray(payload.sections) ? payload.sections : [];
+  const sections = rawSections
+    .map((section) => {
+      const record = asRecord(section);
+      if (!record) return undefined;
+      const title =
+        typeof record.title === 'string' ? fit(record.title, MAX_LIST_TITLE) : '';
+      const rows = choiceOptions(record.rows)
+        .slice(0, MAX_LIST_ROWS)
+        .map((row) => ({
+          id: row.id.slice(0, MAX_LIST_ID),
+          title: fit(row.title, MAX_LIST_TITLE),
+        }));
+      if (!title || rows.length === 0) return undefined;
+      return { title, rows };
+    })
+    .filter(
+      (section): section is { title: string; rows: Array<{ id: string; title: string }> } =>
+        Boolean(section),
+    );
+  const flatOptions = choiceOptions(payload.options);
+  const resolved =
+    sections.length > 0
+      ? sections
+      : flatOptions.length > 0
+        ? [
+            {
+              title: 'Opciones',
+              rows: flatOptions.slice(0, MAX_LIST_ROWS).map((option) => ({
+                id: option.id.slice(0, MAX_LIST_ID),
+                title: fit(option.title, MAX_LIST_TITLE),
+              })),
+            },
+          ]
+        : [];
+  if (resolved.length === 0) return undefined;
+  return {
+    kind: 'list',
+    to,
+    bodyText: fit(toWhatsAppMarkup(prompt), MAX_BODY),
+    buttonText,
+    sections: resolved,
   };
 }
 

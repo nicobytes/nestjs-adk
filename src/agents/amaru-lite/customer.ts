@@ -2,22 +2,21 @@ import { LlmAgent } from '@google/adk';
 import { ChannelService } from '../../channel/channel.service.js';
 import { PocLog } from '../../adk/poc-log.js';
 import { MODEL } from '../../constants.js';
+import { createSendTextTool } from '../channel-tools.js';
 import {
   stripInternalBantContents,
   stopTurnAfterOutboundIntent,
 } from './callbacks.js';
 import {
-  createReplyWithButtonsTool,
-  createReplyWithTextTool,
-} from './reply.tool.js';
+  loadInstructionPair,
+  withSessionContext,
+} from './instructions/load.js';
+import { createSearchContextTool } from './tools/search-context.js';
+import { readTurnCount } from './state.js';
 
 export const CUSTOMER_NAME = 'customer';
 
-const STATIC_PREFIX = `You are Amaru-lite customer agent for a travel demo.
-Never invent plans, prices, or bookings. If asked about plans, say you cannot invent them.
-Never echo BANT JSON or internal signals.
-When you reply to the customer, call reply_with_text once (or reply_with_buttons for a choice), then stop.
-Do not send leftover prose after a tool call.`;
+const STATIC = loadInstructionPair('customer');
 
 export function createCustomerAgent(
   channel: ChannelService,
@@ -28,12 +27,14 @@ export function createCustomerAgent(
   return new LlmAgent({
     name: CUSTOMER_NAME,
     model: MODEL,
-    description: 'Talks to the customer via reply_with_* tools.',
-    instruction: () =>
-      `${STATIC_PREFIX} Today is ${new Date().toISOString().slice(0, 10)}.`,
+    description: 'Talks to the customer via search_context + send_text.',
+    instruction: (context) =>
+      withSessionContext(STATIC, {
+        user_turn_count: readTurnCount(context.state.toRecord()),
+      }),
     tools: [
-      createReplyWithTextTool(channel, log),
-      createReplyWithButtonsTool(channel, log),
+      createSearchContextTool(log),
+      createSendTextTool(channel, log),
     ],
     beforeModelCallback: stripInternalBantContents,
     afterToolCallback: stopTurnAfterOutboundIntent,
