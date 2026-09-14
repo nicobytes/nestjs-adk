@@ -29,6 +29,7 @@ curl -s localhost:3000/health
 ```
 
 Verdict table: **[RESULTS.md](./RESULTS.md)**. Spec/plan/tasks: `specs/001-durable-queue-poc/`.
+Python-port parity (Amaru-lite brain) ≠ queue; see **[RESULTS-port-python.md](./RESULTS-port-python.md)** (`agentId: amaru_lite`).
 
 Live Gemini tests skip unless `GOOGLE_API_KEY` is set. `/whatsapp/*` and playground are **not** the decision path.
 
